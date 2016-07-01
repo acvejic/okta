@@ -1,0 +1,57 @@
+---
+- name: Import EPEL GPG key
+  rpm_key:
+    key: "{{ EPEL_REPO_GPG_KEY_URL }}"
+    state: present
+
+- name: Install the EPEL repo
+  yum:
+    name: "{{ EPEL_REPO_URL }}"
+    state: present
+
+- name: Install the latest version of OpenVPN
+  yum:
+    name: "{{ item }}"
+    state: latest
+  with_items: "{{ centos_openvpn_pkgs }}"
+
+- name: Ensure group 'nogroup' is present
+  group:
+    name: nogroup
+    state: present
+    system: yes
+
+- include: iptables.yml
+- include: generate-keys.yml
+- include: generate-keys.yml
+
+- name: Deploy plugin
+  copy: src={{ item }} dest={{ okta_plugin_location }}
+  with_items:
+   - defer_simple.so
+   - okta_openvpn.py
+   - okta_pinset.py
+
+- name: Deploy okta ini
+  template: src=okta_openvpn.ini.j2 dest="{{ openvpn_path }}/okta_openvpn.ini"
+
+- name: create dirs
+  file: "dest={{ item }} state=directory"
+  with_items:
+    - "{{ okta_tmp_dir}}"
+    - "{{ okta_plugin_location }}"
+  run_once: true
+  ignore_errors: yes
+
+- name: Copy OpenVPN configuration file into place
+  template:
+    src: etc_openvpn_server.conf.j2
+    dest: "/etc/openvpn/{{ openvpn_config_file }}.conf"
+  notify:
+    - Restart Openvpn
+
+- name: setup openvpn auto-start & start
+  service:
+    name: "{{openvpn_service_name}}"
+    enabled: yes
+    state: started
